@@ -62,13 +62,24 @@ Full technical and executive documentation is available in both languages:
 
 To replicate the data pipeline and compile the reports locally:
 
+### 1. Install & Load R Dependencies
+
+```r
 # Install pacman if not present
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 
 # Restore required packages
 pacman::p_load(tidyverse, sidrar, seasonal, urca, tseries, fpp3, knitr, here)
+```
 
-Compile the reports using Quarto CLI:
+### 2. Compile Reports via Quarto CLI
 
+```bash
+# Render Brazilian Portuguese report
 quarto render reports/brazil_unemployment_report_pt.qmd --to pdf
+
+# Render English executive report
 quarto render reports/brazil_unemployment_report_en.qmd --to pdf
+```
+Brgds,
+YAN
