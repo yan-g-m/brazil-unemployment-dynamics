@@ -1,0 +1,4 @@
+Test,Null_Hypothesis,Test_Statistic,Critical_Value_5pct,Decision
+ADF (com tendência),Presença de Raiz Unitária,-1.4585790523380633,-3.43,Não Rejeita H0
+KPSS (com tendência),Estacionariedade em Tendência,0.7907482856368064,0.146,Rejeita H0
+Zivot-Andrews (intercepto e tendência),Raiz Unitária com Quebra Estrutural,-3.4042541123756536,-5.08,Não Rejeita H0

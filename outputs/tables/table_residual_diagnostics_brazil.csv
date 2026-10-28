@@ -1,0 +1,5 @@
+Diagnostic_Test,Null_Hypothesis,Test_Statistic,P_Value,Decision_5pct
+Ljung-Box (Lag 12),Ausência de Autocorrelação,12.962712513044146,0.2257640823572744,Não Rejeita H0 (Válido)
+Ljung-Box (Lag 24),Ausência de Autocorrelação,27.567779411526303,0.19045087179062348,Não Rejeita H0 (Válido)
+ARCH-LM (Lag 12),Homocedasticidade Condicional,16.83626498384035,0.1558609742405486,Não Rejeita H0 (Válido)
+Jarque-Bera,Normalidade dos Erros,0.7779546025950492,0.6777496538771197,Não Rejeita H0 (Válido)

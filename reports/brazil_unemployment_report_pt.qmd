@@ -1,0 +1,218 @@
+---
+title: "Taxa de Desemprego no Brasil: Quebras Estruturais, Sazonalidade e Heterogeneidade Regional"
+subtitle: "Uma análise empírica com X-13ARIMA-SEATS e STL na PNAD Contínua (2012–2026)"
+author: "Yan Galante Maestre"
+date: "2026-10-27"
+format:
+  pdf:
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    papersize: a4
+    geometry:
+      - top=25mm
+      - bottom=25mm
+      - left=20mm
+      - right=20mm
+    colorlinks: true
+  html:
+    theme: flatly
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    self-contained: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
+pacman::p_load(tidyverse, knitr, here)
+```
+
+# O Desemprego em Perspectiva: Novo Piso ou Efeito Calendário?
+
+O mercado de trabalho brasileiro encerrou os trimestres mais recentes a operar em patamares próximos de 5,3% a 5,4%. Este patamar não apenas consolida a recuperação econômica pós-pandemia, mas assinala a **menor taxa de desemprego já registrada em toda a série histórica da PNAD Contínua**, iniciada em 2012 pelo IBGE. O piso anterior da série pertencia ao ciclo de 2013–2014, quando a desocupação orbitava entre 6,2% e 6,8%.
+
+Apesar do dado expressivo, a interpretação da conjuntura costuma esbarrar numa confusão analítica frequente: no fim de cada ano civil, o comércio e os serviços abrem vagas temporárias que reduzem a taxa observada; logo em seguida, no primeiro trimestre, esses contratos são encerrados e o indicador sofre um repique imediato. Esse movimento mecânico gera diagnósticos precipitados, ora confundindo contratações de fim de ano com ganhos estruturais de produtividade, ora interpretando a recomposição de procura ativa por trabalho em janeiro como uma deterioração dos fundamentos.
+
+Este estudo procura responder a duas questões empíricas centrais:
+1. **O que é tendência estrutural e o que é efeito de calendário?** Após expurgar os efeitos sazonais da série nacional, a economia brasileira entrou efetivamente em um novo patamar estrutural de desemprego mais baixo?
+2. **Como é que essa dinâmica se distribui pelas regiões do país?** O padrão sazonal e os patamares de ocupação operam de forma homogênea entre as diferentes Unidades da Federação?
+
+## Delimitação Metodológica e Escopo do Estudo
+
+Antes de avançar na análise dos dados, convém delimitar com rigor o que este trabalho se propõe a responder e o que fica expressamente fora do seu escopo:
+
+* **O que fazemos aqui:** O foco é estritamente econométrico e descritivo. Trabalhamos com a identificação de propriedades estocásticas, testes formais de raiz unitária, detecção endógena de quebras estruturais e decomposição temporal através de filtros consagrados na literatura (X-13ARIMA-SEATS e STL).
+* **O que não fazemos aqui:** O estudo não procura estabelecer nexos de causalidade para os patamares ou assimetrias observadas entre os estados. Não estamos avaliando o impacto de políticas públicas locais, programas governamentais de transferência de renda, enquadramentos fiscais regionais ou rigidezes de contratação. Investigar por que razão certos estados convivem com patamares historicamente elevados ou por que outros mantêm desemprego mínimo exige modelagens multivariadas com microdados e identificação de choques específicos, agenda reservada para pesquisas futuras.
+
+---
+
+# Diagnóstico Temporal da Série Agregada
+
+A série mensal da taxa de desemprego nacional — expressa em médias móveis trimestrais pelo IBGE — abrange o período de março de 2012 até agosto de 2026.
+
+```{r fig_01, out.width="100%", fig.align="center"}
+#| fig.cap: "Trajetória histórica e funções de autocorrelação (ACF e PACF) do desemprego no Brasil."
+knitr::include_graphics(here::here("outputs", "figures", "figure_01_exploratory_diagnostics.png"))
+```
+
+A inspeção da autocorrelação na Figura 1 evidencia a memória longa da série: a Função de Autocorrelação (ACF) decai de forma muito lenta e gradual ao longo de 36 defasagens, enquanto a Função de Autocorrelação Parcial (PACF) apresenta um corte nítido após a primeira defasagem. Essa estrutura estocástica indica não-estacionariedade em nível e forte persistência autorregressiva.
+
+## Testes de Raiz Unitária e Quebra Estrutural
+
+Para determinar a ordem de integração e avaliar eventuais descontinuidades na trajetória determinística, foram calculados os testes Augmented Dickey-Fuller (ADF), KPSS e o teste de Zivot-Andrews com quebra endógena conjunta em tendência e constante.
+
+```{r tab_unit_root}
+tab_unit_root <- readr::read_csv(here::here("outputs", "tables", "table_unit_root_tests_brazil.csv"))
+knitr::kable(
+  tab_unit_root,
+  digits = 3,
+  col.names = c("Teste", "Hipótese Nula (H0)", "Estatística", "Valor Crítico (5%)", "Decisão"),
+  align = c("l", "l", "r", "r", "l")
+)
+```
+
+Os testes ADF e KPSS confirmam a presença de raiz unitária na série em nível. O teste de Zivot-Andrews ($t = -3{,}404$, valor crítico a 5% de $-5{,}08$) não rejeita a hipótese nula de raiz unitária, comprovando que a não-estacionariedade da taxa de desemprego é robusta e persiste mesmo admitindo quebra na trajetória determinística. O algoritmo identifica maio de 2021 como a inflexão endógena mais relevante da série histórica, marcando o pico do choque pandêmico (15,0%) antes do ciclo contínuo de compressão até o piso de 2026 e justificando o uso de dupla diferenciação no modelo SARIMA.
+
+## Ajustamento Sazonal via X-13ARIMA-SEATS
+
+A depuração estacional foi estimada com a especificação ótima SARIMA $(1,1,0)(0,1,1)_{12}$ em logaritmo natural através do módulo SEATS. O modelo acomoda a dependência autorregressiva de curto prazo ($\phi_1 = 0{,}7265$) e o padrão estacional interanual ($\Theta_{12} = 0{,}7162$).
+
+```{r fig_02, out.width="100%", fig.align="center"}
+#| fig.cap: "Decomposição da taxa de desemprego no Brasil em tendência-ciclo, componente sazonal e ruído irregular via X-13ARIMA-SEATS."
+knitr::include_graphics(here::here("outputs", "figures", "figure_02_structural_decomposition_brazil.png"))
+```
+
+A decomposição da Figura 2 separa a dinâmica de longo prazo do ciclo estacional:
+* **Fator Sazonal:** Oscila de forma regular entre 0,93 e 1,08. Em termos práticos, o final de ano contrai a taxa em até 7% abaixo da sua tendência-ciclo, enquanto os meses do primeiro trimestre introduzem uma pressão mecânica em alta de até 8%.
+* **Componente Irregular:** Concentra-se em torno de 1,0, absorvendo variações transitórias de curtíssimo prazo como ruído não correlacionado.
+
+## Diagnóstico Residual e Auditoria do Choque da Covid-19
+
+A consistência das inferências depende de os resíduos do modelo aderirem às propriedades clássicas de ruído branco.
+
+```{r tab_residuos}
+tab_residuals <- readr::read_csv(here::here("outputs", "tables", "table_residual_diagnostics_brazil.csv"))
+knitr::kable(
+  tab_residuals,
+  digits = 4,
+  col.names = c("Teste de Diagnóstico", "Hipótese Nula (H0)", "Estatística", "p-valor", "Decisão (5%)"),
+  align = c("l", "l", "r", "r", "l")
+)
+```
+
+Os testes de Ljung-Box descartam autocorrelação serial nas defasagens 12 e 24, o teste ARCH-LM rejeita heterocedasticidade condicional e o teste Jarque-Bera corrobora a hipótese de normalidade.
+
+```{r fig_normality, out.width="95%", fig.align="center"}
+#| fig.cap: "Diagnóstico visual de normalidade dos resíduos: Histograma com densidade empírica e Normal Q-Q Plot."
+knitr::include_graphics(here::here("outputs", "figures", "figure_v2_residual_normality.png"))
+```
+
+A inspeção gráfica apresentada na Figura 3 confirma os testes formais: o histograma empírico preserva simetria em redor do zero, enquanto o Q-Q Plot mantém os quantis alinhados sobre a reta teórica, com ligeiros descolamentos restritos às caudas além de $\pm 2$ desvios-padrão.
+
+### Detalhe Metodológico: Tratamento de Outliers e o Painel Rotativo do IBGE
+
+Dois refinamentos econométricos fundamentam a especificação final:
+
+1. **Auditoria de Dummies da Covid-19:** Um teste ANOVA confrontando o SARIMA puro contra um modelo com *dummies* determinísticas de pulso e degrau indicou significância marginal ($p = 0{,}037$). Todavia, a omissão de *dummies* manuais no modelo principal não implica desconsideração do choque: o módulo SEATS do X-13 incorpora internamente algoritmos de detecção automática de outliers (*Additive Outliers* e *Level Shifts*), conforme recomenda o manual do U.S. Census Bureau. Essa rotina dinâmica tratou a perturbação pontual de 2020/2021 sem a necessidade de intervenções manuais que induzissem sobreajuste (*overfitting*).
+2. **Estrutura de Média Móvel Trimestral (MM3):** A taxa mensal da PNADC divulgada pelo IBGE é construída sobre um esquema amostral de painel rotativo trimestral com sobreposição mensal contínua. Essa métrica embute, por definição mecânica, um processo de autocorrelação de inovações equivalente a um $MA(2)$. O modelo univariado absorve adequadamente essa estrutura nas defasagens anuais, justificando a avaliação do teste de Ljung-Box nas ordens 12 e 24, nas quais o efeito de sobreposição mecânica de três meses já se encontra plenamente dissipado.
+
+---
+
+# Heterogeneidade Regional: Os Quatro Mercados
+
+Acompanhar apenas o agregado nacional oculta fortes assimetrias regionais. A distribuição transversal das 27 Unidades da Federação na PNADC trimestral atesta a persistência de patamares marcadamente divergentes ao longo de todo o período analisado.
+
+```{r fig_03, out.width="90%", fig.align="center"}
+#| fig.cap: "Média histórica da taxa de desemprego das 27 UFs com dispersão histórica de ±1 desvio-padrão (2012–2026)."
+knitr::include_graphics(here::here("outputs", "figures", "figure_03_states_unemployment_ranking.png"))
+```
+
+## Critério Empírico de Seleção das Quatro UFs
+
+Com base na matriz de distribuição transversal (`table_states_descriptive_summary.csv`), foram selecionados quatro estados que representam os perfis limites da federação:
+
+* **Santa Catarina (Piso Estrutural e Rigidez):** Registra a menor taxa média histórica de todo o país (4,54%) e o menor desvio-padrão ($\sigma = 1{,}67\%$), mantendo um mercado com reduzido desemprego aberto e baixa oscilação.
+* **Rio de Janeiro (Volatilidade Cíclica Máxima):** Apresenta o maior desvio-padrão da série nacional ($\sigma = 3{,}97\%$) e uma amplitude de 13,90 p.p. (mínima de 5,8% e máxima de 19,7%), funcionando como a economia de maior sensibilidade aos ciclos macroeconômicos e fiscais.
+* **Bahia (Teto Histórico e Volatilidade Sazonal Extrema):** Detém a maior taxa média histórica do Brasil (14,22%), associada a uma amplitude entre extremos de 13,70 p.p. e à maior oscilação sazonal entre trimestres de toda a amostra.
+* **São Paulo (Âncora Macroeconômica):** Maior mercado de trabalho do país, com taxa média histórica de 9,81% e desvio-padrão de 3,20%, espelhando a trajetória global da economia brasileira.
+
+```{r fig_04, out.width="100%", fig.align="center"}
+#| fig.cap: "Trajetórias temporais trimestrais comparando Santa Catarina, São Paulo, Rio de Janeiro e Bahia (2012–2026)."
+knitr::include_graphics(here::here("outputs", "figures", "figure_04_selected_states_trajectories.png"))
+```
+
+A Figura 5 demonstra a separação entre os patamares: as trajetórias de Santa Catarina e da Bahia não se tocam em momento algum da série. Mesmo no auge da recessão de 2015–2016, a pior taxa já registrada em Santa Catarina (máxima de 7,90%) manteve-se abaixo da melhor taxa observada na Bahia em toda a história (mínima de 8,00%).
+
+## Decomposição STL em Painel Regional
+
+Para isolar o comportamento de cada uma dessas quatro economias, estimou-se a decomposição robusta por LOESS (STL) sobre as séries trimestrais.
+
+```{r fig_05, out.width="100%", fig.align="center"}
+#| fig.cap: "Decomposição STL em painel comparando taxa observada, taxa ajustada e tendência-ciclo nos quatro estados."
+knitr::include_graphics(here::here("outputs", "figures", "figure_05_states_decomposed_facets.png"))
+```
+
+A decomposição da Figura 6 evidencia a assimetria na sensibilidade temporal:
+* Em **Santa Catarina**, a taxa observada e a dessazonalizada mantêm-se praticamente sobrepostas, sinalizando que a sazonalidade pouco afeta o mercado local.
+* No **Rio de Janeiro**, os desvios respondem a ciclos longos de contração e expansão econômica, sem um padrão sazonal desproporcionado.
+* Na **Bahia**, a série bruta exibe um formato acentuadamente serrilhado ao longo de todos os anos, evidenciando uma oscilação intra-anual expressiva e sistemática.
+
+---
+
+# Anatomia do Calendário: O Fator Fim de Ano
+
+Para comparar as economias estaduais com o agregado do Brasil em escala homogênea, a métrica de sazonalidade foi padronizada em **desvio absoluto em pontos percentuais (p.p.) face à tendência-ciclo**.
+
+```{r fig_06, out.width="100%", fig.align="center"}
+#| fig.cap: "Perfil sazonal consolidado em pontos percentuais (Brasil mensal no Painel A vs. Estados trimestrais no Painel B)."
+knitr::include_graphics(here::here("outputs", "figures", "figure_06_seasonal_profiles.png"))
+```
+
+## Leitura dos Painéis do Perfil Sazonal
+
+* **Painel A (Brasil Mensal):** As trajetórias anuais em segundo plano comprovam a regularidade estacional ao longo de todo o histórico. Em média, a taxa atinge o seu vale em dezembro (ficando cerca de **$-0{,}5$ a $-0{,}6\text{ p.p.}$** abaixo da tendência) e o pico em março/abril (**$+0{,}5$ a $+0{,}6\text{ p.p.}$** acima da tendência), delineando uma oscilação acumulada de pico a vale da ordem de **$1{,}1\text{ p.p.}$** no calendário anual.
+* **Painel B (Estados Trimestrais):** A linha tracejada preta traça a trajetória média trimestral do Brasil (variando de $+0{,}22\text{ p.p.}$ no Q1 e $+0{,}25\text{ p.p.}$ no Q2 para $-0{,}44\text{ p.p.}$ no Q4, uma amplitude agregada de **$0{,}66\text{ p.p.}$**). A comparação com as UFs expõe assimetrias acentuadas:
+  * **Bahia:** Apresenta a **maior volatilidade sazonal da federação**, com uma amplitude extrema de **$1{,}94\text{ p.p.}$** entre o primeiro e o quarto trimestre. O estado sobe em média **$+1{,}10\text{ p.p.}$** no Q1 e contrai **$-0{,}84\text{ p.p.}$** no Q4, tornando a sua leitura conjuntural muito vulnerável a distorções caso os dados não sejam depurados.
+  * **São Paulo:** Registra a segunda maior amplitude sazonal do grupo, com oscilação total de **$1{,}18\text{ p.p.}$** ($+0{,}58\text{ p.p.}$ no Q1 contra $-0{,}60\text{ p.p.}$ no Q4), refletindo a concentração dos setores de comércio e serviços.
+  * **Santa Catarina e Rio de Janeiro:** Apresentam amplitudes sazonais contidas, na faixa de **$0{,}62\text{ p.p.}$ a $0{,}69\text{ p.p.}$**, muito próximas da média nacional. No Rio de Janeiro, este resultado comprova que o seu elevado desvio-padrão global ($\sigma = 3{,}97\%$) decorre de choques cíclicos de médio prazo, e não de oscilações puramente mecânicas de calendário.
+
+## Desmistificando o Fim de Ano: Tendência Recente e Projeção
+
+A Figura 8 combina a trajetória recente da tendência-ciclo purificada com o leque estacional projetado até o encerramento de 2026.
+
+```{r fig_07, out.width="100%", fig.align="center"}
+#| fig.cap: "Trajetória da tendência estrutural recente e projeção sazonal do desemprego até Dezembro de 2026."
+knitr::include_graphics(here::here("outputs", "figures", "figure_07_trend_and_forecast_bridge.png"))
+```
+
+A análise conjunta dos dois componentes clarifica a leitura conjuntural:
+1. **O Novo Regime Estrutural é Real:** A tendência-ciclo (linha vermelha) quebrou de forma consistente a marca de 6,0% e estabilizou na faixa dos 5,3% a 5,4%. Trata-se do nível mais baixo em toda a história da PNAD Contínua. O aperto do mercado de trabalho reflete uma mudança real de patamar estrutural, e não um mero ruído estatístico.
+2. **A Ilusão de Dezembro de 2026:** A projeção sazonal (linha tracejada azul) indica que a taxa observada deverá convergir para o intervalo entre 4,9% e 5,1% no encerramento de 2026. Uma taxa observada em 5,0% em dezembro não significará uma nova aceleração dos fundamentos econômicos, assim como uma subida natural para valores próximos de 5,6% no primeiro trimestre de 2027 não representará desaquecimento. Ambas as flutuações refletem o calendário previsível do mercado de trabalho.
+
+---
+
+# Considerações Finais
+
+A análise empírica desenvolvida conduz a duas conclusões essenciais:
+
+1. **Aperto Estrutural Histórico:** O mercado de trabalho brasileiro opera em 2026 no patamar estrutural mais comprimido desde a introdução da PNADC em 2012. Com a tendência-ciclo purificada na ordem de 5,3% a 5,4%, a economia superou as mínimas observadas no ciclo anterior de 2013–2014. Este aperto traz implicações diretas para a formação de salários reais, custos operacionais no setor terciário e a calibração da taxa básica de juros.
+2. **O Risco da Leitura Sazonal Precipitada:** A identificação deste novo regime estrutural só é confiável porque o ciclo estacional foi formalmente isolado. Em termos mensais, o calendário induz uma oscilação acumulada de pico a vale superior a 1,1 ponto percentual no Brasil. No plano regional, esta dinâmica ganha proporções extremas na Bahia, cuja amplitude sazonal trimestral atinge expressivos **1,94 ponto percentual** (variando de $+1{,}10\text{ p.p.}$ no Q1 a $-0{,}84\text{ p.p.}$ no Q4), contrastando com a rigidez estacional de Santa Catarina (0,69 p.p.) e do Rio de Janeiro (0,62 p.p.).
+
+Interpretar a taxa bruta de desemprego como barômetro imediato de aceleração ou abrandamento conjuntural sem a devida depuração de calendário induz a diagnósticos enviesados. A dissociação entre o pulso estrutural da economia e a respiração previsível do calendário é requisito técnico indispensável para qualquer análise macroeconômica fundamentada.
+
+---
+
+# Referências
+
+* Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990). STL: A seasonal-trend decomposition procedure based on Loess. *Journal of Official Statistics*, 6(1), 3-73.
+* Dickey, D. A., & Fuller, W. A. (1979). Distribution of the estimators for autoregressive time series with a unit root. *Journal of the American Statistical Association*, 74(366a), 427-431.
+* Gómez, V., & Maravall, A. (2001). Automatic modeling methods for univariate series. In *A Course in Time Series Analysis* (pp. 171-201). John Wiley & Sons.
+* Instituto Brasileiro de Geografia e Estatística - IBGE. (2026). *Pesquisa Nacional por Amostra de Domicílios Contínua (PNAD Contínua): Metodologia e Notas Técnicas*. Rio de Janeiro: IBGE.
+* Kwiatkowski, D., Phillips, P. C., Schmidt, P., & Shin, Y. (1992). Testing the null hypothesis of stationarity against the alternative of a unit root. *Journal of Econometrics*, 54(1-3), 159-178.
+* U.S. Census Bureau. (2017). *X-13ARIMA-SEATS Reference Manual: Accessible Version*. Washington, DC: Time Series Research Staff, Center for Statistical Research and Methodology.
+* Zivot, E., & Andrews, D. W. K. (2002). Further evidence on the great crash, the oil-price shock, and the unit-root hypothesis. *Journal of Business & Economic Statistics*, 20(1), 25-44.

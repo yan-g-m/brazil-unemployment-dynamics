@@ -1,0 +1,197 @@
+---
+title: "Brazil Unemployment Rate Dynamics: Structural Breaks, Seasonality, and Regional Heterogeneity"
+subtitle: "An empirical investigation using X-13ARIMA-SEATS and STL filtering on PNAD Continuous (2012–2026)"
+author: "Yan Galante Maestre"
+date: "2026-10-27"
+format:
+  pdf:
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    papersize: a4
+    geometry:
+      - top=25mm
+      - bottom=25mm
+      - left=20mm
+      - right=20mm
+    colorlinks: true
+  html:
+    theme: flatly
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    self-contained: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
+pacman::p_load(tidyverse, knitr, here)
+```
+
+# Unemployment in Perspective: New Structural Baseline or Calendar Illusion?
+
+The Brazilian labor market has recently been operating at unemployment rates between 5.3% and 5.4%. This level marks the **lowest unemployment rate recorded since the inception of the Continuous PNAD survey** by IBGE in 2012, breaking below the previous historical low of the 2013–2014 cycle (6.2%–6.8%).
+
+However, conjunctural assessments frequently fall into a recurring calendar trap: temporary hiring in retail and services depresses the observed rate at year-end, only for the indicator to rebound sharply in the first quarter as temporary contracts expire. This mechanical swing leads to misdiagnoses, often mistaking holiday hiring for structural productivity gains or interpreting first-quarter labor market returns as economic distress.
+
+This study addresses two empirical questions:
+1. **Trend vs. Seasonality:** After purifying the national series from calendar effects, has Brazil genuinely transitioned to a structurally tighter labor market regime?
+2. **Regional Fragmentation:** Does this seasonal dynamic and tightness operate uniformly across subnational economies?
+
+## Methodological Scope and Limitations
+
+We establish upfront what this paper investigates and what lies beyond its scope:
+
+* **What we do:** The focus is purely econometric and descriptive. We estimate stochastic properties, formal unit root tests, endogenous structural breaks, and time series decomposition using standard filtering frameworks (X-13ARIMA-SEATS and STL).
+* **What we do not do:** This study does not attempt to establish causal determinants for state-level differences, nor does it evaluate the role of regional policies, cash transfer programs, tax regimes, or labor union structures. Structural causal identification is formally reserved for future research.
+
+---
+
+# Stochastic Properties and Aggregate Diagnostics
+
+The monthly national series (reported as 3-month rolling averages by IBGE) spans March 2012 through August 2026.
+
+```{r fig_01, out.width="100%", fig.align="center"}
+#| fig.cap: "Historical trajectory and autocorrelation functions (ACF and PACF) of Brazilian unemployment."
+knitr::include_graphics(here::here("outputs", "figures", "figure_01_exploratory_diagnostics.png"))
+```
+
+The ACF in Figure 1 exhibits hyperbolic decay across 36 lags, while the PACF cuts off sharply after lag 1, confirming non-stationarity and strong autoregressive persistence.
+
+## Unit Root Tests and Structural Breaks
+
+We report Augmented Dickey-Fuller (ADF), KPSS, and Zivot-Andrews tests with endogenous trend and intercept breaks.
+
+```{r tab_unit_root}
+tab_unit_root <- readr::read_csv(here::here("outputs", "tables", "table_unit_root_tests_brazil.csv"))
+knitr::kable(
+  tab_unit_root,
+  digits = 3,
+  col.names = c("Test", "Null Hypothesis (H0)", "Statistic", "Critical Value (5%)", "Decision"),
+  align = c("l", "l", "r", "r", "l")
+)
+```
+
+ADF and KPSS tests confirm the presence of a unit root in the level series. Furthermore, the Zivot-Andrews test ($t = -3.404$ against a 5% critical value of $-5.08$) fails to reject the unit root null hypothesis, confirming that non-stationarity is robust and persists even when allowing for an endogenous break. The algorithm identifies May 2021 as the most relevant inflection point—marking the transition from the 15.0% pandemic peak to the historical decline through 2026—validating the double differencing required in the SARIMA specification.
+
+## Seasonal Adjustment via X-13ARIMA-SEATS
+
+Decomposition was estimated using the optimal SARIMA $(1,1,0)(0,1,1)_{12}$ specification in log scale via SEATS ($\phi_1 = 0.7265$, $\Theta_{12} = 0.7162$).
+
+```{r fig_02, out.width="100%", fig.align="center"}
+#| fig.cap: "Structural decomposition into trend-cycle, seasonal component, and noise via X-13ARIMA-SEATS."
+knitr::include_graphics(here::here("outputs", "figures", "figure_02_structural_decomposition_brazil.png"))
+```
+
+The multiplicative seasonal factor in Figure 2 oscillates regularly between 0.93 and 1.08, compressing the observed rate by up to 7% below trend in December and pushing it up by up to 8% in Q1.
+
+## Residual Diagnostics and Covid-19 Shock Handling
+
+```{r tab_residuos}
+tab_residuals <- readr::read_csv(here::here("outputs", "tables", "table_residual_diagnostics_brazil.csv"))
+knitr::kable(
+  tab_residuals,
+  digits = 4,
+  col.names = c("Diagnostic Test", "Null Hypothesis (H0)", "Statistic", "p-value", "Decision (5%)"),
+  align = c("l", "l", "r", "r", "l")
+)
+```
+
+Ljung-Box tests confirm no residual serial autocorrelation at lags 12 and 24, ARCH-LM validates conditional homoskedasticity, and Jarque-Bera confirms normality.
+
+```{r fig_normality, out.width="95%", fig.align="center"}
+#| fig.cap: "Visual residual normality diagnostics (Empirical density vs. theoretical normal and Q-Q Plot)."
+knitr::include_graphics(here::here("outputs", "figures", "figure_v2_residual_normality.png"))
+```
+
+The empirical density in Figure 3 confirms symmetry around zero, while the Q-Q Plot tracks the theoretical line closely, with mild departures confined to the outer tails beyond $\pm 2$ standard deviations.
+
+### Methodological Notes: Outlier Treatment and the Rolling Panel Survey
+
+Two econometric nuances support the final model design:
+
+1. **Covid-19 Dummy Audit:** An ANOVA nested test comparing the pure SARIMA against a model with deterministic pulse and level shift dummies yielded $p = 0.037$. Omitting manual dummies does not ignore the pandemic shock: the SEATS module within X-13 natively incorporates automated outlier identification (Additive Outliers and Level Shifts) as recommended by the U.S. Census Bureau. This dynamic filter absorbed the 2020/2021 shock without requiring ad-hoc manual interventions that risk sample overfitting.
+2. **3-Month Rolling Average Structure:** The monthly series published by IBGE is constructed via a 3-month rotating panel survey with continuous monthly overlap. Mechanically, this design injects short-term innovation persistence akin to an $MA(2)$ process. The time series specification accommodates this structure across annual lags, explaining why Ljung-Box tests are formally evaluated at lags 12 and 24, where the 3-month mechanical overlap is completely dissipated.
+
+---
+
+# Regional Heterogeneity: The Four Benchmark States
+
+```{r fig_03, out.width="90%", fig.align="center"}
+#| fig.cap: "Cross-sectional ranking of 27 Brazilian states (Historical mean ± 1 standard deviation, 2012–2026)."
+knitr::include_graphics(here::here("outputs", "figures", "figure_03_states_unemployment_ranking.png"))
+```
+
+## Data-Driven Selection Criteria
+
+From `table_states_descriptive_summary.csv`, four representative states were selected based purely on sample properties:
+* **Santa Catarina (Structural Floor):** Lowest historical average (4.54%) and lowest variance ($\sigma = 1.67\%$).
+* **Rio de Janeiro (Peak Cyclical Volatility):** Highest historical standard deviation ($\sigma = 3.97\%$) and range of 13.90 p.p. (min 5.8%, max 19.7%).
+* **Bahia (Structural Ceiling & Extreme Seasonal Swing):** Highest historical average (14.22%), range of 13.70 p.p., and the largest intra-annual seasonal swing.
+* **São Paulo (Macroeconomic Anchor):** Largest labor force, historical mean of 9.81% and $\sigma = 3.20\%$, mirroring the aggregate cycle.
+
+```{r fig_04, out.width="100%", fig.align="center"}
+#| fig.cap: "Quarterly comparative trajectories of Santa Catarina, São Paulo, Rio de Janeiro, and Bahia (2012–2026)."
+knitr::include_graphics(here::here("outputs", "figures", "figure_04_selected_states_trajectories.png"))
+```
+
+Figure 5 highlights that Santa Catarina and Bahia exhibit completely disjoint distributions: the highest rate in Santa Catarina (7.90%) never reached the historical minimum of Bahia (8.00%).
+
+## Panel STL Decomposition
+
+```{r fig_05, out.width="100%", fig.align="center"}
+#| fig.cap: "Panel STL decomposition for the four selected states (Observed, Seasonally Adjusted, and Trend-Cycle)."
+knitr::include_graphics(here::here("outputs", "figures", "figure_05_states_decomposed_facets.png"))
+```
+
+---
+
+# Calendar Anatomy: The Year-End Dynamic
+
+Seasonality is standardized as the **absolute deviation in percentage points (p.p.) from the trend-cycle**.
+
+```{r fig_06, out.width="100%", fig.align="center"}
+#| fig.cap: "Consolidated seasonal profile in percentage points (Monthly Brazil in Panel A vs. Quarterly States in Panel B)."
+knitr::include_graphics(here::here("outputs", "figures", "figure_06_seasonal_profiles.png"))
+```
+
+## Detailed Reading of the Seasonal Panels
+
+* **Panel A (Monthly Brazil):** Historical mean troughs in December at **$-0.5$ to $-0.6\text{ p.p.}$** below trend and peaks in March/April at **$+0.5$ to $+0.6\text{ p.p.}$**, spanning an intra-annual swing of **$1.1\text{ p.p.}$**
+* **Panel B (Quarterly States):** Contrast highlights subnational asymmetry:
+  * **Bahia:** Largest seasonal volatility in the country, with an extreme **$1.94\text{ p.p.}$** swing (+1.10 p.p. in Q1 vs. -0.84 p.p. in Q4).
+  * **São Paulo:** Second largest swing at **$1.18\text{ p.p.}$** (+0.58 p.p. in Q1 vs. -0.60 p.p. in Q4).
+  * **Santa Catarina and Rio de Janeiro:** Moderate swings (**$0.62\text{ p.p.}$ to $0.69\text{ p.p.}$**), aligning closely with the national aggregate (0.66 p.p.). In Rio de Janeiro, this confirms that high historical variance ($\sigma = 3.97\%$) reflects medium-term economic and fiscal shocks rather than mechanical calendar shifts.
+
+## Year-End Demystification: Current Trend and Outlook
+
+```{r fig_07, out.width="100%", fig.align="center"}
+#| fig.cap: "Underlying structural trend and year-end seasonal projection through December 2026."
+knitr::include_graphics(here::here("outputs", "figures", "figure_07_trend_and_forecast_bridge.png"))
+```
+
+1. **The Structural Regime is Genuine:** The underlying trend-cycle settled at 5.3%–5.4%, the tightest labor market observed in the history of the Continuous PNAD.
+2. **The December 2026 Illusion:** As mechanical seasonal hiring takes place, the observed rate is expected to dip toward 4.9%–5.1% in December. This seasonal dip does not indicate accelerating economic momentum, nor will a natural rebound to ~5.6% in early 2027 reflect economic deterioration.
+
+---
+
+# Concluding Remarks
+
+1. **Historic Structural Tightness:** Brazil operates at historic labor tightness in 2026, with an underlying trend near 5.3%–5.4%, creating upward pressures on real wages and service inflation.
+2. **The Peril of Raw Calendar Readings:** Disentangling trend from seasonality is indispensable. The calendar imposes a mechanical peak-to-trough swing of over 1.1 p.p. nationwide, escalating to 1.94 p.p. in Bahia while remaining rigid in Santa Catarina (0.69 p.p.). Treating raw unadjusted rates as direct barometers of macro health risks severe policy misdirection.
+
+---
+
+# References
+
+* Cleveland, R. B., Cleveland, W. S., McRae, J. E., & Terpenning, I. (1990). STL: A seasonal-trend decomposition procedure based on Loess. *Journal of Official Statistics*, 6(1), 3-73.
+* Dickey, D. A., & Fuller, W. A. (1979). Distribution of the estimators for autoregressive time series with a unit root. *Journal of the American Statistical Association*, 74(366a), 427-431.
+* Gómez, V., & Maravall, A. (2001). Automatic modeling methods for univariate series. In *A Course in Time Series Analysis* (pp. 171-201). John Wiley & Sons.
+* Instituto Brasileiro de Geografia e Estatística - IBGE. (2026). *Continuous National Household Sample Survey (PNAD Continuous): Methodology and Technical Notes*. Rio de Janeiro: IBGE.
+* Kwiatkowski, D., Phillips, P. C., Schmidt, P., & Shin, Y. (1992). Testing the null hypothesis of stationarity against the alternative of a unit root. *Journal of Econometrics*, 54(1-3), 159-178.
+* U.S. Census Bureau. (2017). *X-13ARIMA-SEATS Reference Manual: Accessible Version*. Washington, DC: Time Series Research Staff, Center for Statistical Research and Methodology.
+* Zivot, E., & Andrews, D. W. K. (2002). Further evidence on the great crash, the oil-price shock, and the unit-root hypothesis. *Journal of Business & Economic Statistics*, 20(1), 25-44.
